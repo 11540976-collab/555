@@ -1,19 +1,43 @@
 import { BankAccount, StockHolding, Transaction, User } from "../types";
 import { INITIAL_ACCOUNTS, INITIAL_INVESTMENTS, INITIAL_TRANSACTIONS } from "../constants";
 import { db, auth } from "./firebaseConfig";
-import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  updateProfile 
+} from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
 // --- Authentication ---
 
-export const loginWithGoogle = async (): Promise<User> => {
-  const provider = new GoogleAuthProvider();
+export const registerWithEmail = async (email: string, password: string, username: string): Promise<User> => {
   try {
-    const result = await signInWithPopup(auth, provider);
-    const fbUser = result.user;
-    
-    if (!fbUser) throw new Error("Login failed: No user info returned");
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const fbUser = userCredential.user;
 
+    // Update Display Name
+    await updateProfile(fbUser, {
+      displayName: username
+    });
+    
+    const user: User = {
+      id: fbUser.uid,
+      username: username || 'User',
+      email: fbUser.email || ''
+    };
+    return user;
+  } catch (error) {
+    console.error("Registration failed", error);
+    throw error;
+  }
+};
+
+export const loginWithEmail = async (email: string, password: string): Promise<User> => {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const fbUser = userCredential.user;
+    
     const user: User = {
       id: fbUser.uid,
       username: fbUser.displayName || 'User',
