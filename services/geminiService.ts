@@ -1,7 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { StockHolding, Transaction } from "../types";
 
-// Ensure API key is loaded from environment variables
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper for retry logic
@@ -23,7 +22,7 @@ export const fetchStockPrices = async (holdings: StockHolding[]): Promise<Record
     I need the current approximate market price (in original currency) for the following stock symbols: ${symbols}.
     Assume current date is ${new Date().toISOString()}.
     If it's a weekend or closed market, give the last closing price.
-    Return a JSON object where keys are symbols and values are numeric prices.
+    Return a JSON object with a 'prices' array containing objects with 'symbol' and 'price' properties.
   `;
 
   try {

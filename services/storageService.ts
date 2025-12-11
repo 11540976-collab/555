@@ -1,8 +1,8 @@
 import { BankAccount, StockHolding, Transaction, User } from "../types";
 import { INITIAL_ACCOUNTS, INITIAL_INVESTMENTS, INITIAL_TRANSACTIONS } from "../constants";
 import { db, auth } from "./firebaseConfig";
+import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { signInWithPopup, GoogleAuthProvider, signOut, User as FirebaseUser } from "firebase/auth";
 
 // --- Authentication ---
 
@@ -12,6 +12,8 @@ export const loginWithGoogle = async (): Promise<User> => {
     const result = await signInWithPopup(auth, provider);
     const fbUser = result.user;
     
+    if (!fbUser) throw new Error("Login failed: No user info returned");
+
     const user: User = {
       id: fbUser.uid,
       username: fbUser.displayName || 'User',

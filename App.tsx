@@ -8,7 +8,7 @@ import Reports from './pages/Reports';
 import { AppView, BankAccount, StockHolding, Transaction, User } from './types';
 import { loadData, saveData, loginWithGoogle, logoutUser } from './services/storageService';
 import { auth } from './services/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged } from "firebase/auth";
 import { Wallet, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -23,6 +23,7 @@ const App: React.FC = () => {
 
   // Auth Listener
   useEffect(() => {
+    // Firebase Modular SDK auth listener
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         const mappedUser: User = {
