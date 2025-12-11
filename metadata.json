@@ -1,0 +1,5 @@
+{
+  "name": "FinTrack AI - Personal Finance Manager",
+  "description": "A comprehensive personal finance application featuring account management, expense tracking, and AI-powered stock portfolio updates using Gemini.",
+  "requestFramePermissions": []
+}
