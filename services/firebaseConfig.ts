@@ -1,20 +1,22 @@
-import { initializeApp } from "firebase/app";
+import firebase from "firebase/compat/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// 使用 Vite 標準環境變數
-// 這些變數需要在 GitHub Repository Secrets 中設定
+// 使用 Vite define 注入的環境變數
+// 這些變數會在 build time 被替換為字串
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Use compat/app to avoid TS module resolution issues with "initializeApp" in some environments
+// The returned app instance is compatible with modular SDK functions
+const app = firebase.initializeApp(firebaseConfig);
 
 // Initialize Auth and Firestore
 export const auth = getAuth(app);
