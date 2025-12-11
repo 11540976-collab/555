@@ -9,6 +9,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     base: './', // Ensures relative paths for GitHub Pages deployment
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+      sourcemap: false
+    },
     define: {
       // Maps process.env.API_KEY (used by SDK) to the VITE_ env var
       'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || ''),
