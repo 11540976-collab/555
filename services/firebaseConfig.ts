@@ -1,4 +1,4 @@
-import * as firebase from "firebase/app";
+import firebase from "firebase/compat/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
@@ -13,8 +13,9 @@ const firebaseConfig = {
   appId: "FIREBASE_APP_ID_PLACEHOLDER"
 };
 
-// Fix: Use namespace import to correctly resolve initializeApp
+// Initialize Firebase using compat to avoid 'no exported member initializeApp' error
 const app = firebase.initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Use modular auth/firestore with the default app
+export const auth = getAuth();
+export const db = getFirestore();
