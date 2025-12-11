@@ -7,9 +7,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     base: './', // Ensures relative paths for GitHub Pages deployment
     define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || process.env.API_KEY),
-      // Polyfill process.env for other uses if necessary
-      'process.env': process.env
+      // 安全地替換 process.env.API_KEY，如果沒有值則給空字串，避免 undefined 錯誤
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
     }
   };
 });

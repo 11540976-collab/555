@@ -1,8 +1,9 @@
-import * as firebaseApp from "firebase/app";
+import * as firebase from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 // 這些值將在 GitHub Actions 部署過程中被自動替換
+// 如果您在本地運行，請確保創建 .env 檔案或手動填入測試用的 API Key
 const firebaseConfig = {
   apiKey: "FIREBASE_API_KEY_PLACEHOLDER",
   authDomain: "FIREBASE_AUTH_DOMAIN_PLACEHOLDER",
@@ -12,7 +13,8 @@ const firebaseConfig = {
   appId: "FIREBASE_APP_ID_PLACEHOLDER"
 };
 
-const app = firebaseApp.initializeApp(firebaseConfig);
+// Fix: Use namespace import to correctly resolve initializeApp
+const app = firebase.initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
