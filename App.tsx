@@ -9,13 +9,13 @@ import { AppView, BankAccount, StockHolding, Transaction, User } from './types';
 import { loadData, saveData, loginWithEmail, registerWithEmail, logoutUser } from './services/storageService';
 import { auth } from './services/firebaseConfig';
 import { onAuthStateChanged } from "firebase/auth";
-import { Wallet, Loader2, Mail, Lock, User as UserIcon, LogIn, ArrowRight, AlertTriangle, Info } from 'lucide-react';
+import { Wallet, Loader2, Mail, Lock, User as UserIcon, LogIn, ArrowRight, AlertTriangle, Info, WifiOff, ShieldAlert } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<AppView>(AppView.LOGIN);
   const [isLoading, setIsLoading] = useState(true);
-  const [configError, setConfigError] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   
   // Login/Register Form State
   const [isRegistering, setIsRegistering] = useState(false);
@@ -31,15 +31,16 @@ const App: React.FC = () => {
 
   // Auth Listener
   useEffect(() => {
-    // If auth failed to init in firebaseConfig.ts, it will be undefined here.
+    // Check if Firebase is available. If not, switch to Demo Mode.
     if (!auth) {
-      console.error("Firebase Auth not initialized.");
-      setConfigError(true);
+      console.log("Firebase not configured. Switching to Demo/Offline Mode.");
+      setIsDemoMode(true);
+      checkLocalSession();
       setIsLoading(false);
       return;
     }
 
-    // Firebase Modular SDK auth listener
+    // Firebase is available, listen for auth state
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         const mappedUser: User = {
@@ -51,6 +52,7 @@ const App: React.FC = () => {
         await handleLoadData(mappedUser.id);
         setCurrentView(AppView.DASHBOARD);
       } else {
+        // If no firebase user, check if we were previously in forced demo mode (unlikely mixed usage, but good for safety)
         setUser(null);
         setCurrentView(AppView.LOGIN);
         setAccounts([]);
@@ -63,6 +65,18 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  const checkLocalSession = () => {
+    const demoUserJson = localStorage.getItem('fintrack_demo_user');
+    if (demoUserJson) {
+      const demoUser = JSON.parse(demoUserJson);
+      setUser(demoUser);
+      handleLoadData(demoUser.id);
+      setCurrentView(AppView.DASHBOARD);
+    } else {
+      setCurrentView(AppView.LOGIN);
+    }
+  };
+
   const handleLoadData = async (userId: string) => {
     try {
       const data = await loadData(userId);
@@ -71,30 +85,23 @@ const App: React.FC = () => {
       setInvestments(data.investments);
     } catch (error) {
       console.error("Failed to load data", error);
-      // Don't block UI on load error, just show empty or default state
     }
   };
 
-  // Persistence effect (Save to Firebase when state changes)
+  // Persistence effect
   useEffect(() => {
-    if (user && !isLoading && !configError) {
+    if (user && !isLoading) {
       const timer = setTimeout(() => {
         saveData(user.id, { accounts, transactions, investments });
-      }, 1000); // 1 second debounce
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [accounts, transactions, investments, user, isLoading, configError]);
+  }, [accounts, transactions, investments, user, isLoading]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
     setIsLoading(true);
-
-    if (configError || !auth) {
-        setAuthError("系統設定錯誤：無法連接到認證服務");
-        setIsLoading(false);
-        return;
-    }
 
     try {
       if (isRegistering) {
@@ -103,48 +110,82 @@ const App: React.FC = () => {
       } else {
         await loginWithEmail(email, password);
       }
-      // Successful login/register will trigger onAuthStateChanged
+      
+      // If in Demo Mode (automatically detected), manually trigger state update
+      if (isDemoMode) {
+          const stored = localStorage.getItem('fintrack_demo_user');
+          if (stored) {
+              const u = JSON.parse(stored);
+              setUser(u);
+              await handleLoadData(u.id);
+              setCurrentView(AppView.DASHBOARD);
+          }
+      }
+
     } catch (error: any) {
       console.error("Auth Error:", error);
       let msg = "發生錯誤，請稍後再試";
       
-      // Map Firebase Error Codes to User-Friendly Messages
-      switch (error.code) {
-        case 'auth/invalid-credential':
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-          msg = "帳號或密碼錯誤";
-          break;
-        case 'auth/email-already-in-use':
-          msg = "此 Email 已被註冊";
-          break;
-        case 'auth/weak-password':
-          msg = "密碼強度不足 (至少 6 位)";
-          break;
-        case 'auth/invalid-email':
-          msg = "Email 格式不正確";
-          break;
-        case 'auth/operation-not-allowed':
-          msg = "系統未啟用 Email/密碼登入功能 (請至 Firebase Console 開啟)";
-          break;
-        case 'auth/network-request-failed':
-          msg = "網路連線失敗，請檢查您的網路";
-          break;
-        case 'auth/too-many-requests':
-          msg = "嘗試次數過多，請稍後再試";
-          break;
+      if (error.code) {
+        switch (error.code) {
+            case 'auth/invalid-credential':
+            case 'auth/user-not-found':
+            case 'auth/wrong-password':
+                msg = "帳號或密碼錯誤";
+                break;
+            case 'auth/email-already-in-use':
+                msg = "此 Email 已被註冊";
+                break;
+            case 'auth/weak-password':
+                msg = "密碼強度不足 (至少 6 位)";
+                break;
+            case 'auth/invalid-email':
+                msg = "Email 格式不正確";
+                break;
+            case 'auth/operation-not-allowed':
+                msg = "系統未啟用登入功能。請聯繫管理員或使用離線模式。";
+                break;
+            case 'auth/invalid-api-key':
+                msg = "系統設定錯誤 (API Key 無效)。請使用離線模式。";
+                break;
+            case 'auth/network-request-failed':
+                msg = "網路連線失敗，請檢查您的網路連線。";
+                break;
+        }
       }
       
       if (error.message === "請輸入使用者名稱") msg = error.message;
-      if (error.message.includes("Auth 尚未初始化")) msg = "系統初始化失敗，請檢查 API Key";
-
       setAuthError(msg);
-      setIsLoading(false);
+    } finally {
+        setIsLoading(false);
     }
   };
 
+  const handleManualDemoLogin = () => {
+    setIsLoading(true);
+    setTimeout(() => {
+        setIsDemoMode(true);
+        const demoUser: User = { 
+            id: 'demo-guest', 
+            username: '訪客 Guest', 
+            email: 'guest@example.com' 
+        };
+        localStorage.setItem('fintrack_demo_user', JSON.stringify(demoUser));
+        setUser(demoUser);
+        handleLoadData(demoUser.id);
+        setCurrentView(AppView.DASHBOARD);
+        setIsLoading(false);
+    }, 800);
+  };
+
   const handleLogout = async () => {
-    if (auth) await logoutUser();
+    await logoutUser();
+    // Clear user state
+    setUser(null);
+    setCurrentView(AppView.LOGIN);
+    
+    // If we were in manual demo mode, we stay in 'demo capable' mode but return to login screen
+    // We don't necessarily reset isDemoMode to false unless we want to retry firebase
   };
 
   // Loading Screen
@@ -159,34 +200,20 @@ const App: React.FC = () => {
     );
   }
 
-  // Config Error Screen
-  if (configError) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-xl p-8 max-w-md text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-4 bg-red-100 rounded-full">
-              <AlertTriangle size={40} className="text-red-500" />
-            </div>
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">系統設定錯誤</h2>
-          <p className="text-slate-600 mb-6">
-            無法連接至 Firebase 服務。請確認環境變數 (API Key) 是否已正確設定。
-          </p>
-          <div className="text-xs text-slate-400 bg-slate-100 p-4 rounded text-left overflow-auto">
-             Tips: Check .env file or CI secrets for VITE_FIREBASE_API_KEY.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Login View
   if (!user || currentView === AppView.LOGIN) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md animate-fade-in">
-          <div className="flex justify-center mb-6">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md animate-fade-in relative overflow-hidden">
+          
+          {isDemoMode && (
+              <div className="absolute top-0 left-0 w-full bg-amber-100 text-amber-800 text-xs py-1 px-4 text-center font-medium flex justify-center items-center gap-2">
+                  <WifiOff size={12} />
+                  <span>離線體驗模式 (資料僅儲存於本機)</span>
+              </div>
+          )}
+
+          <div className="flex justify-center mb-6 mt-4">
             <div className="p-4 bg-emerald-100 rounded-full">
               <Wallet size={40} className="text-emerald-600" />
             </div>
@@ -237,9 +264,11 @@ const App: React.FC = () => {
             </div>
 
             {authError && (
-              <div className="p-3 bg-red-50 text-red-600 border border-red-100 text-sm rounded-lg flex items-start gap-2">
-                <Info size={16} className="mt-0.5 shrink-0" />
-                <span>{authError}</span>
+              <div className="p-3 bg-red-50 text-red-600 border border-red-100 text-sm rounded-lg flex items-start gap-2 animate-pulse">
+                <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+                <div className="flex-1">
+                    <span>{authError}</span>
+                </div>
               </div>
             )}
 
@@ -255,7 +284,7 @@ const App: React.FC = () => {
             </button>
           </form>
           
-          <div className="mt-6 text-center">
+          <div className="mt-6 flex flex-col items-center space-y-4">
             <button 
               onClick={() => {
                 setIsRegistering(!isRegistering);
@@ -265,6 +294,16 @@ const App: React.FC = () => {
             >
               {isRegistering ? '已有帳號？返回登入' : '還沒有帳號？立即註冊'}
             </button>
+
+            {!isDemoMode && (
+                <button 
+                onClick={handleManualDemoLogin}
+                className="text-xs text-slate-400 hover:text-slate-600 flex items-center space-x-1"
+                >
+                <WifiOff size={12} />
+                <span>無法登入？使用離線體驗模式 (Skip Login)</span>
+                </button>
+            )}
           </div>
         </div>
       </div>
@@ -282,6 +321,13 @@ const App: React.FC = () => {
       
       <main className="flex-1 ml-64 p-8 overflow-y-auto">
         <div className="max-w-6xl mx-auto animate-fade-in">
+          {isDemoMode && (
+             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm flex items-center gap-2">
+                <WifiOff size={16} />
+                <span>目前為離線體驗模式，資料僅儲存於您的瀏覽器中。若需雲端同步，請檢查 Firebase 設定。</span>
+             </div>
+          )}
+          
           {currentView === AppView.DASHBOARD && (
             <Dashboard 
               user={user} 

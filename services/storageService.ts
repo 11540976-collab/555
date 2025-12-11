@@ -11,31 +11,34 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 
 // --- Helpers ---
 
-const ensureAuthReady = () => {
-  if (!auth) {
-    throw new Error("Firebase Auth 尚未初始化。請檢查 API Key 設定。");
-  }
-};
+const DEMO_USER_KEY = 'fintrack_demo_user';
 
-const ensureDbReady = () => {
-  if (!db) {
-    throw new Error("Firebase Firestore 尚未初始化。請檢查 API Key 設定。");
-  }
-};
+// Check if we are in demo mode (no firebase)
+const isDemoMode = () => !auth || !db;
 
 // --- Authentication ---
 
 export const registerWithEmail = async (email: string, password: string, username: string): Promise<User> => {
-  ensureAuthReady();
+  if (isDemoMode()) {
+    // Demo Mode: Simulate registration locally
+    console.log("Demo Mode: Registering locally");
+    const user: User = {
+      id: 'demo-' + Date.now(),
+      username: username,
+      email: email
+    };
+    localStorage.setItem(DEMO_USER_KEY, JSON.stringify(user));
+    return user;
+  }
+
+  // Firebase Mode
   try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    // @ts-ignore - auth checked in isDemoMode
+    const userCredential = await createUserWithEmailAndPassword(auth!, email, password);
     const fbUser = userCredential.user;
 
-    // Update Display Name
     if (fbUser) {
-        await updateProfile(fbUser, {
-        displayName: username
-        });
+        await updateProfile(fbUser, { displayName: username });
     }
     
     const user: User = {
@@ -51,9 +54,29 @@ export const registerWithEmail = async (email: string, password: string, usernam
 };
 
 export const loginWithEmail = async (email: string, password: string): Promise<User> => {
-  ensureAuthReady();
+  if (isDemoMode()) {
+    // Demo Mode: Simulate login (allow any credentials or check against last saved demo user)
+    console.log("Demo Mode: Logging in locally");
+    const stored = localStorage.getItem(DEMO_USER_KEY);
+    // If we have a stored demo user, return it, otherwise create a session for this email
+    if (stored) {
+        const u = JSON.parse(stored);
+        if (u.email === email) return u;
+    }
+    // Create new session if no match found (Demo convenience)
+    const user: User = {
+        id: 'demo-user',
+        username: email.split('@')[0],
+        email: email
+    };
+    localStorage.setItem(DEMO_USER_KEY, JSON.stringify(user));
+    return user;
+  }
+
+  // Firebase Mode
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    // @ts-ignore
+    const userCredential = await signInWithEmailAndPassword(auth!, email, password);
     const fbUser = userCredential.user;
     
     const user: User = {
@@ -69,11 +92,24 @@ export const loginWithEmail = async (email: string, password: string): Promise<U
 };
 
 export const logoutUser = async () => {
+  if (isDemoMode()) {
+    localStorage.removeItem(DEMO_USER_KEY);
+    return;
+  }
+  
+  // @ts-ignore
   if (auth) await signOut(auth);
 };
 
 export const getCurrentUser = (): User | null => {
+  if (isDemoMode()) {
+      const stored = localStorage.getItem(DEMO_USER_KEY);
+      return stored ? JSON.parse(stored) : null;
+  }
+
+  // @ts-ignore
   if (!auth) return null;
+  // @ts-ignore
   const fbUser = auth.currentUser;
   if (!fbUser) return null;
   return {
@@ -83,47 +119,61 @@ export const getCurrentUser = (): User | null => {
   };
 };
 
-// --- Data Persistence (Firestore) ---
+// --- Data Persistence ---
 
 export const loadData = async (userId: string) => {
-  ensureDbReady();
   if (!userId) throw new Error("No user ID provided");
 
-  try {
-    const docRef = doc(db, "users", userId);
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-        return docSnap.data() as { accounts: BankAccount[], transactions: Transaction[], investments: StockHolding[] };
-    } else {
-        // Initialize new user with demo data in Firestore
-        const initialData = {
-        accounts: INITIAL_ACCOUNTS.map(a => ({...a, userId})),
-        transactions: INITIAL_TRANSACTIONS.map(t => ({...t, userId})),
-        investments: INITIAL_INVESTMENTS.map(i => ({...i, userId}))
-        };
-        // Use setDoc cautiously; ensure Firestore rules allow write
-        await setDoc(docRef, initialData);
-        return initialData;
+  // Try Firebase first if available
+  if (db) {
+    try {
+        const docRef = doc(db, "users", userId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as { accounts: BankAccount[], transactions: Transaction[], investments: StockHolding[] };
+        }
+    } catch (error) {
+        console.error("Firestore Load Error (falling back to local):", error);
     }
-  } catch (error) {
-      console.error("Firestore Error in loadData:", error);
-      // Fallback to local constants if Firestore fails (e.g., permissions or network)
-      // allowing the user to at least see the dashboard
-      return {
-        accounts: INITIAL_ACCOUNTS.map(a => ({...a, userId})),
-        transactions: INITIAL_TRANSACTIONS.map(t => ({...t, userId})),
-        investments: INITIAL_INVESTMENTS.map(i => ({...i, userId}))
-      };
   }
+
+  // Fallback: LocalStorage or Constants
+  // This handles both "Demo Mode" and "Offline Mode"
+  const localData = localStorage.getItem(`fintrack_data_${userId}`);
+  if (localData) {
+      return JSON.parse(localData);
+  }
+
+  // Default Data
+  const initialData = {
+    accounts: INITIAL_ACCOUNTS.map(a => ({...a, userId})),
+    transactions: INITIAL_TRANSACTIONS.map(t => ({...t, userId})),
+    investments: INITIAL_INVESTMENTS.map(i => ({...i, userId}))
+  };
+
+  // If in firebase mode and this is a new user, try to init firestore
+  if (db) {
+     try {
+         await setDoc(doc(db, "users", userId), initialData);
+     } catch (e) { /* ignore write errors */ }
+  }
+
+  return initialData;
 };
 
 export const saveData = async (userId: string, data: { accounts: BankAccount[], transactions: Transaction[], investments: StockHolding[] }) => {
-  if (!userId || !db) return;
-  try {
-    const docRef = doc(db, "users", userId);
-    await setDoc(docRef, data, { merge: true });
-  } catch (error) {
-    console.error("Firestore Save Error:", error);
+  if (!userId) return;
+
+  // Always save to LocalStorage (acts as cache/offline/demo storage)
+  localStorage.setItem(`fintrack_data_${userId}`, JSON.stringify(data));
+
+  // If Firebase is available, save there too
+  if (db) {
+    try {
+        const docRef = doc(db, "users", userId);
+        await setDoc(docRef, data, { merge: true });
+    } catch (error) {
+        console.error("Firestore Save Error:", error);
+    }
   }
 };
